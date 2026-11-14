@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Music Shelf — Apple & Spotify Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --shelf-bg: #F5F4F0;
+            --ambient-1: #4b5563;
+            --ambient-2: #111827;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: var(--shelf-bg);
+            color: #1d1d1f;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100dvh;
+            width: 100vw;
+            transition: background-color 0.7s cubic-bezier(0.22, 1, 0.36, 1), color 0.5s ease;
+        }
+
+        /* Dark Immersive Mode when an album is pulled out into Apple Now Playing */
+        body.player-active {
+            background-color: #090a0e;
+            color: #ffffff;
+        }
+
+        /* Full-Bleed Full-Screen Apple Music Player (Matches image_f6f2d1.jpg) */
+        .fullbleed-player {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100dvh;
+            z-index: 40;
+            overflow: hidden;
+            background-color: #111216;
+            transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .fullbleed-artwork {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 76%;
+            object-fit: cover;
+            object-position: center 22%;
+            transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
+        }
+
+        /* Seamless Apple Music Dissolve Gradient from Artwork into Adaptive Ambient Blur */
+        .fullbleed-dissolve {
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(
+                    to bottom,
+                    rgba(0, 0, 0, 0.16) 0%,
+                    rgba(0, 0, 0, 0.02) 24%,
+                    rgba(18, 19, 22, 0.38) 48%,
+                    var(--ambient-1) 66%,
+                    var(--ambient-2) 100%
+                );
+            pointer-events: none;
+            transition: background 0.9s ease;
+        }
+
+        .fullbleed-blur-mask {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 56%;
+            backdrop-filter: blur(34px) saturate(145%);
+            -webkit-backdrop-filter: blur(34px) saturate(145%);
+            mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.85) 26%, #000000 50%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.85) 26%, #000000 50%);
+            pointer-events: none;
+        }
+
+        /* 3D Track Flip Transition inside Fullscreen Player */
+        @keyframes track3DFlip {
+            0% { transform: perspective(1200px) rotateY(0deg) scale(1); }
+            45% { transform: perspective(1200px) rotateY(14deg) scale(1.04); opacity: 0.78; }
+            100% { transform: perspective(1200px) rotateY(0deg) scale(1); opacity: 1; }
+        }
+        .art-3d-transition {
+            animation: track3DFlip 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Ambient Backdrop for Now Playing Mode */
+        .ambient-canvas {
+            position: fixed;
+            inset: -25%;
+            z-index: 0;
+            opacity: 0;
+            background: radial-gradient(circle at 32% 28%, var(--ambient-1) 0%, transparent 58%),
+                        radial-gradient(circle at 74% 72%, var(--ambient-2) 0%, #090a0e 80%);
+            filter: blur(60px) saturate(145%);
+            transition: opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1), background 1.1s ease;
+            pointer-events: none;
+        }
+
+        body.player-active .ambient-canvas {
+            opacity: 1;
+        }
+
+        /* Subtle Studio Floor Gradient in Bookshelf Mode (matching image_68225d.jpg) */
+        .shelf-studio-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: radial-gradient(ellipse at 50% 48%, #FAF9F6 0%, #F3F2EE 58%, #E7E5DF 100%);
+            transition: opacity 0.6s ease;
+            pointer-events: none;
+        }
+
+        body.player-active .shelf-studio-bg {
+            opacity: 0;
+        }
+
+        /* Apple Light & Dark Frosted Pills */
+        .pill-light {
+            background: rgba(255, 255, 255, 0.78);
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .pill-light:hover {
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.09);
+        }
+
+        .pill-dark {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(26px) saturate(180%);
+            -webkit-backdrop-filter: blur(26px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .pill-dark:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        /* 3D Perspective Shelf Stage (Exact V-Fan Spine Geometry from image_68225d.jpg) */
+        .shelf-viewport {
+            perspective: 1600px;
+            perspective-origin: 50% 50%;
+            transform-style: preserve-3d;
+            touch-action: pan-y;
+            cursor: grab;
+            width: 100%;
+            height: 100%;
+            min-height: 380px;
+        }
+
+        .shelf-viewport:active {
+            cursor: grabbing;
+        }
+
+        .shelf-stage {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 0;
+            height: 0;
+            transform-style: preserve-3d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Realistic 3D Hardcover / Vinyl Sleeve Object */
+        .album-3d-wrapper {
+            position: absolute;
+            width: clamp(210px, 28vw, 320px);
+            height: clamp(210px, 28vw, 320px);
+            margin-left: calc(clamp(210px, 28vw, 320px) / -2);
+            margin-top: calc(clamp(210px, 28vw, 320px) / -2);
+            transform-style: preserve-3d;
+            transition: transform 0.62s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease, filter 0.4s ease;
+            will-change: transform;
+            cursor: pointer;
+        }
+
+        .album-3d-wrapper.dragging {
+            transition: none !important;
+        }
+
+        /* Physical Pull-Out Animation ("책장에서 뽑아 정면으로 회전") */
+        .album-3d-wrapper.pulled-out {
+            z-index: 120 !important;
+            transition: transform 0.82s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+
+        .album-box {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+        }
+
+        /* Front Cover */
+        .album-front {
+            position: absolute;
+            inset: 0;
+            border-radius: 6px;
+            overflow: hidden;
+            backface-visibility: hidden;
+            transform: translateZ(13px);
+            background: #e5e5ea;
+            box-shadow: 0 22px 44px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+            transition: border-radius 0.6s ease, box-shadow 0.6s ease;
+        }
+
+        .pulled-out .album-front {
+            border-radius: 22px;
+            box-shadow: 0 32px 68px rgba(0, 0, 0, 0.62), inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+        }
+
+        .album-front::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(125deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.02) 45%, rgba(0,0,0,0.18) 100%);
+            pointer-events: none;
+        }
+
+        /* 3D Spine Edge (Visible prominently when angled in the bookshelf like image_68225d.jpg) */
+        .album-spine {
+            position: absolute;
+            top: 1px;
+            bottom: 1px;
+            left: -13px;
+            width: 26px;
+            transform: rotateY(-90deg);
+            transform-origin: center;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 10.5px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.22), inset 1px 0 0 rgba(255,255,255,0.35);
+            overflow: hidden;
+            padding: 12px 2px;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        /* Right Edge (Sleeve Opening / Record Pages) */
+        .album-edge-right {
+            position: absolute;
+            top: 2px;
+            bottom: 2px;
+            right: -12px;
+            width: 24px;
+            transform: rotateY(90deg);
+            background: linear-gradient(90deg, #dcdce0 0%, #f7f7f9 50%, #cfcfd4 100%);
+            border-radius: 2px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.18);
+        }
+
+        /* Top & Bottom Edges for true 3D thickness */
+        .album-edge-top {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            top: -12px;
+            height: 24px;
+            transform: rotateX(90deg);
+            background: #e8e8ed;
+        }
+
+        .album-edge-bottom {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            bottom: -12px;
+            height: 24px;
+            transform: rotateX(-90deg);
+            background: #c7c7cc;
+            box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
+        }
+
+        /* Back Cover */
+        .album-back {
+            position: absolute;
+            inset: 0;
+            border-radius: 6px;
+            transform: rotateY(180deg) translateZ(13px);
+            background: #2c2c2e;
+            box-shadow: 0 22px 44px rgba(0, 0, 0, 0.22);
+        }
+
+        /* Apple Range Sliders */
+        input[type="range"].apple-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.28);
+            height: 6px;
+            border-radius: 999px;
+            outline: none;
+            cursor: pointer;
+            transition: height 0.15s ease;
+        }
+        input[type="range"].apple-slider:hover {
+            height: 8px;
+        }
+        input[type="range"].apple-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 0px;
+            height: 0px;
+            border-radius: 50%;
+            background: #ffffff;
+            transition: width 0.15s ease, height 0.15s ease;
+        }
+        input[type="range"].apple-slider:hover::-webkit-slider-thumb,
+        input[type="range"].apple-slider:active::-webkit-slider-thumb {
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+        }
+        input[type="range"].apple-slider:hover {
+            height: 7px;
+        }
+        input[type="range"].apple-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+            cursor: pointer;
+        }
+
+        /* Custom Scrollbars */
+        .apple-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .apple-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .apple-scroll::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.3);
+            border-radius: 999px;
+        }
+
+        /* Equalizer Animation */
+        @keyframes eqWave {
+            0%, 100% { height: 4px; }
+            50% { height: 13px; }
+        }
+        .eq-bar {
+            width: 2.5px;
+            border-radius: 2px;
+            background-color: currentColor;
+            animation: eqWave 0.75s ease-in-out infinite;
+        }
+        .eq-bar:nth-child(2) { animation-delay: 0.2s; }
+        .eq-bar:nth-child(3) { animation-delay: 0.4s; }
+        .paused .eq-bar {
+            animation-play-state: paused;
+            height: 4px !important;
+        }
+
+        .view-transition {
+            transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1), transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+    </style>
+
+    <meta name="theme-color" content="#101014">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Annie">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+</head>
+<body>
+
+    <!-- Backgrounds -->
+    <div class="shelf-studio-bg"></div>
+    <div id="ambientCanvas" class="ambient-canvas"></div>
+
+    <!-- Main Full-Viewport App Container (Zero Status Bar Icons: No Clock, No Battery, No Wi-Fi) -->
+    <div class="relative z-10 flex flex-col justify-between w-full h-full px-3 py-3 sm:px-7 sm:py-5 max-w-[1520px] mx-auto overflow-hidden">
+
+        <!-- TOP HEADER BAR (Fully responsive without overlap) -->
+        <header id="topHeader" class="flex flex-wrap items-center justify-between gap-2.5 z-30 w-full shrink-0">
+            <!-- Left: Library Sidebar Icon + Editable App Title -->
+            <div class="flex items-center gap-2 min-w-0">
+                <button id="toggleDrawerBtn" title="라이브러리 및 최근 재생곡" class="w-9 h-9 rounded-full pill-light flex items-center justify-center text-neutral-700 shrink-0 header-pill">
+                    <i class="fa-solid fa-bars-staggered text-xs"></i>
+                </button>
+
+                <div class="group relative flex items-center">
+                    <input
+                        id="appTitleInput"
+                        type="text"
+                        value="나의 뮤직 셸프"
+                        maxlength="22"
+                        aria-label="앱 이름 수정"
+                        title="클릭하여 앱 이름 수정"
+                        class="bg-transparent font-semibold text-sm sm:text-base tracking-tight px-2.5 py-1 rounded-xl border border-transparent hover:border-black/15 focus:border-black/30 focus:bg-white/60 focus:outline-none transition-all w-28 sm:w-44 truncate text-neutral-900"
+                    />
+                    <i class="fa-solid fa-pen text-[10px] opacity-35 group-hover:opacity-75 -ml-5 pointer-events-none"></i>
+                </div>
+            </div>
+
+            <!-- Center: Apple Segmented Pill (Albums / Playlists / Recent & Added) -->
+            <nav id="centerSegmentedNav" class="pill-light header-pill p-1 rounded-full flex items-center gap-0.5 sm:gap-1 order-3 sm:order-2 mx-auto sm:mx-0">
+                <button data-tab="albums" class="seg-btn px-3 sm:px-4 py-1 rounded-full text-xs font-semibold transition-all bg-white text-neutral-900 shadow-sm">
+                    Albums
+                </button>
+                <button data-tab="playlists" class="seg-btn px-3 sm:px-4 py-1 rounded-full text-xs font-medium text-neutral-500 hover:text-neutral-900 transition-all">
+                    Playlists
+                </button>
+                <button data-tab="recent" class="seg-btn px-3 sm:px-4 py-1 rounded-full text-xs font-medium text-neutral-500 hover:text-neutral-900 transition-all">
+                    최근·추가곡
+                </button>
+            </nav>
+
+            <!-- Right: Spotify Connect Pill + Search Icon -->
+            <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 order-2 sm:order-3">
+                <button id="openSpotifyModalBtn" class="pill-light header-pill px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 text-neutral-800">
+                    <i class="fa-brands fa-spotify text-[#1DB954] text-sm"></i>
+                    <span id="spotifyStatusLabel" class="hidden md:inline">Spotify 연동</span>
+                    <span id="spotifyDot" class="w-2 h-2 rounded-full bg-neutral-400"></span>
+                </button>
+
+                <button id="openAddModalBtn" title="내 음악 파일 추가" class="w-9 h-9 rounded-full pill-light header-pill flex items-center justify-center text-neutral-800">
+                    <i class="fa-solid fa-plus text-xs"></i>
+                </button>
+
+                <button id="openSearchModalBtn" title="Spotify 및 내 앨범 검색" class="w-9 h-9 rounded-full pill-light header-pill flex items-center justify-center text-neutral-800">
+                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN INTERACTIVE STAGE -->
+        <main class="relative flex-1 flex flex-col items-center justify-center overflow-hidden my-2">
+
+            <!-- VIEW 1: 3D BOOKSHELF CAROUSEL -->
+            <section id="shelfView" class="relative w-full h-full flex flex-col items-center justify-center view-transition">
+                <div id="shelfViewport" class="shelf-viewport flex items-center justify-center">
+                    <div id="shelfStage" class="shelf-stage">
+                        <!-- 3D Album Boxes rendered via JS -->
+                    </div>
+                </div>
+
+                <!-- Focused Album Subtle Label & Quick Controls -->
+                <div id="shelfCaption" class="mt-2 flex items-center gap-3 z-20 shrink-0">
+                    <button id="prevShelfBtn" aria-label="이전 앨범" class="w-8 h-8 rounded-full pill-light flex items-center justify-center text-neutral-700 hover:scale-105 active:scale-95 shadow-sm">
+                        <i class="fa-solid fa-chevron-left text-[11px]"></i>
+                    </button>
+
+                    <div id="focusedAlbumTrigger" class="px-4 py-1.5 rounded-full pill-light text-center cursor-pointer hover:scale-[1.02] transition-transform min-w-[210px] sm:min-w-[260px] shadow-sm">
+                        <p id="shelfAlbumTitle" class="text-xs sm:text-sm font-bold text-neutral-900 truncate">Six Evolutions - Bach: Cello Suites</p>
+                        <p id="shelfAlbumArtist" class="text-[11px] text-neutral-500 truncate">Yo-Yo Ma · 탭하여 책장에서 꺼내기</p>
+                    </div>
+
+                    <button id="nextShelfBtn" aria-label="다음 앨범" class="w-8 h-8 rounded-full pill-light flex items-center justify-center text-neutral-700 hover:scale-105 active:scale-95 shadow-sm">
+                        <i class="fa-solid fa-chevron-right text-[11px]"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW 2: FULL-BLEED FULL-SCREEN APPLE MUSIC PLAYER (Exact match to image_f6f2d1.jpg, zero status bar icons) -->
+            <section id="pulledOutView" class="hidden opacity-0 translate-y-6 fullbleed-player">
+                <!-- Full-Screen Cover Art -->
+                <img id="pulledCoverImg" src="" alt="" class="fullbleed-artwork" />
+
+                <!-- Seamless Color & Blur Dissolve Overlays -->
+                <div class="fullbleed-dissolve"></div>
+                <div class="fullbleed-blur-mask"></div>
+
+                <!-- Interactive Full-Screen Overlay Stack -->
+                <div class="relative z-10 w-full h-full max-w-xl mx-auto flex flex-col justify-between px-6 sm:px-9 pt-4 pb-6 sm:pb-9">
+
+                    <!-- Top Area: Subtle Apple Sheet Grabber + Floating Shelf Return Pill (No clock/battery icons) -->
+                    <div class="flex flex-col items-center">
+                        <button id="topGrabberBtn" title="아래로 내려 책장으로 돌아가기" class="w-11 h-1.5 rounded-full bg-white/45 hover:bg-white/75 transition-colors mb-3 cursor-pointer"></button>
+                        <div class="w-full flex items-center justify-between">
+                            <button id="putBackBtn" class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 backdrop-blur-md border border-white/15 text-xs font-semibold flex items-center gap-1.5 text-white/95 transition-all">
+                                <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                <span>책장으로</span>
+                            </button>
+
+                            <div class="flex items-center gap-2">
+                                <button id="toggleSpotifyEmbedBtn" class="hidden px-3 py-1.5 rounded-full bg-black/30 hover:bg-black/45 backdrop-blur-md border border-white/15 text-[11px] font-semibold text-[#1DB954] flex items-center gap-1.5 transition-all">
+                                    <i class="fa-brands fa-spotify"></i>
+                                    <span>Spotify 웹플레이어</span>
+                                </button>
+                                <button id="addToAlbumBtn" title="이 앨범에 곡 추가" class="w-8 h-8 rounded-full bg-black/25 hover:bg-black/40 backdrop-blur-md border border-white/15 flex items-center justify-center text-white/90 text-xs transition-all">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Optional Live Spotify Official Embed Player (Toggled when needed) -->
+                    <div id="spotifyEmbedContainer" class="hidden my-auto rounded-2xl overflow-hidden border border-white/20 bg-black/50 backdrop-blur-xl shadow-2xl">
+                        <iframe id="spotifyEmbedFrame" style="border-radius:12px" src="" width="100%" height="80" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+                    </div>
+
+                    <!-- Lower Apple Music Control Stack (Exact layout of image_f6f2d1.jpg) -->
+                    <div class="w-full mt-auto space-y-5">
+
+                        <!-- Row 1: Track Title & Artist on Left + Star & More Circle Buttons on Right -->
+                        <div class="flex items-center justify-between gap-4">
+                            <div class="min-w-0 flex-1">
+                                <h2 id="playerTitle" class="text-2xl sm:text-[28px] font-bold tracking-tight text-white leading-tight truncate drop-shadow-sm">Deeper Well</h2>
+                                <p id="playerArtist" class="text-base sm:text-lg font-medium text-white/75 truncate mt-0.5">Kacey Musgraves</p>
+                            </div>
+                            <div class="flex items-center gap-2.5 shrink-0">
+                                <button id="favTrackBtn" aria-label="즐겨찾기" class="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md flex items-center justify-center text-white transition-all active:scale-90">
+                                    <i class="fa-regular fa-star text-sm"></i>
+                                </button>
+                                <button id="toggleQueueSheetBtn" aria-label="수록곡 목록" class="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md flex items-center justify-center text-white transition-all active:scale-90">
+                                    <i class="fa-solid fa-ellipsis text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Progress Scrubber + Elapsed / Sing / Remaining Time -->
+                        <div>
+                            <input id="progressSlider" type="range" min="0" max="100" value="0" step="0.1" class="apple-slider w-full">
+                            <div class="flex items-center justify-between text-[11.5px] font-semibold text-white/60 mt-2 tabular-nums">
+                                <span id="currentTimeLabel">0:15</span>
+                                <button id="singModeBtn" class="px-2 py-0.5 rounded-md hover:bg-white/15 text-white/65 hover:text-white transition-colors tracking-tight">Sing</button>
+                                <span id="remainingTimeLabel">-3:37</span>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Large Apple Music Transport Controls (Rewind / Play-Pause / Fast-Forward) -->
+                        <div class="flex items-center justify-center gap-12 sm:gap-14 py-1">
+                            <button id="prevTrackBtn" aria-label="이전 곡" class="text-white hover:opacity-80 active:scale-90 transition-all text-3xl sm:text-[34px]">
+                                <i class="fa-solid fa-backward"></i>
+                            </button>
+                            <button id="playPauseBtn" aria-label="재생 또는 일시정지" class="w-16 h-16 flex items-center justify-center text-white hover:scale-105 active:scale-90 transition-all text-4xl sm:text-[42px]">
+                                <i id="playPauseIcon" class="fa-solid fa-play"></i>
+                            </button>
+                            <button id="nextTrackBtn" aria-label="다음 곡" class="text-white hover:opacity-80 active:scale-90 transition-all text-3xl sm:text-[34px]">
+                                <i class="fa-solid fa-forward"></i>
+                            </button>
+                        </div>
+
+                        <!-- Row 4: Volume Bar with Left & Right Speaker Icons -->
+                        <div class="flex items-center gap-3.5 px-0.5">
+                            <i class="fa-solid fa-volume-low text-xs text-white/60"></i>
+                            <input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.85" class="apple-slider flex-1">
+                            <i class="fa-solid fa-volume-high text-xs text-white/60"></i>
+                        </div>
+
+                        <!-- Row 5: Bottom 3 Apple Music Utility Icons (Lyrics Quote / AirPlay-Spotify / Up Next List) -->
+                        <div class="flex items-center justify-around pt-1 text-white/70">
+                            <button id="lyricsToggleBtn" title="가사 / 싱 모드" class="p-2.5 rounded-full hover:bg-white/10 hover:text-white transition-all text-lg">
+                                <i class="fa-regular fa-comment-dots"></i>
+                            </button>
+                            <button id="openSpotifyTrackBtn" title="Spotify Connect / 기기 연결" class="p-2.5 rounded-full hover:bg-white/10 hover:text-white transition-all text-lg">
+                                <i class="fa-solid fa-podcast"></i>
+                            </button>
+                            <button id="bottomQueueBtn" title="앨범 수록곡 목록" class="p-2.5 rounded-full hover:bg-white/10 hover:text-white transition-all text-lg">
+                                <i class="fa-solid fa-list-ul"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Slide-Up Frosted Glass Tracklist Drawer inside Fullscreen Player -->
+                <div id="fullscreenQueueDrawer" class="hidden absolute inset-x-0 bottom-0 z-30 max-h-[72%] rounded-t-[32px] bg-black/75 backdrop-blur-2xl border-t border-white/15 p-6 flex flex-col transition-transform duration-300">
+                    <div class="w-10 h-1 rounded-full bg-white/30 mx-auto mb-4"></div>
+                    <div class="flex items-center justify-between pb-3 border-b border-white/15 mb-3">
+                        <div class="min-w-0">
+                            <h3 id="pulledAlbumName" class="font-bold text-base text-white truncate">수록곡 리스트</h3>
+                            <p id="pulledAlbumSub" class="text-xs text-white/60 truncate">곡을 탭하여 3D 전환 재생</p>
+                        </div>
+                        <button id="closeQueueDrawerBtn" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white text-xs">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div id="pulledTrackList" class="flex-1 overflow-y-auto apple-scroll space-y-1.5 pr-1">
+                        <!-- Track items injected via JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: RECENTLY PLAYED & USER ADDED TRACKS VIEW -->
+            <section id="recentAddedView" class="hidden opacity-0 scale-95 w-full max-w-3xl h-full flex flex-col justify-center view-transition z-30">
+                <div class="pill-light rounded-[32px] p-5 sm:p-7 w-full max-h-[82vh] flex flex-col">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-black/10">
+                        <div class="flex items-center gap-2">
+                            <button id="subTabRecent" class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-neutral-900 text-white transition-all">
+                                최근 재생곡 (<span id="recentCountLabel">0</span>)
+                            </button>
+                            <button id="subTabAdded" class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-black/5 text-neutral-700 hover:bg-black/10 transition-all">
+                                내가 추가한 곡 (<span id="addedCountLabel">0</span>)
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button id="syncSpotifyRecentBtn" class="px-3 py-1.5 rounded-full bg-[#1DB954]/15 text-[#15803d] text-xs font-semibold flex items-center gap-1.5 hover:bg-[#1DB954]/25 transition-colors">
+                                <i class="fa-brands fa-spotify"></i>
+                                <span>Spotify 최근기록 새로고침</span>
+                            </button>
+                            <button id="uploadFromListBtn" class="px-3 py-1.5 rounded-full bg-neutral-900 text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-neutral-800 transition-colors">
+                                <i class="fa-solid fa-plus"></i>
+                                <span>곡 추가</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="recentAddedListContainer" class="flex-1 overflow-y-auto apple-scroll mt-4 space-y-2 pr-1">
+                        <!-- Tracks rendered via JS -->
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- BOTTOM FLOATING APPLE MINI-PLAYER PILL -->
+        <footer class="z-30 flex justify-center shrink-0 mt-1">
+            <div id="miniPlayerPill" class="pill-light header-pill rounded-full px-3.5 py-2 flex items-center justify-between gap-3 sm:gap-4 w-full max-w-[460px] shadow-lg">
+                <!-- Left: Mini Cover & Track Info -->
+                <div id="miniPlayerOpenTrigger" class="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group">
+                    <div class="w-8 h-8 rounded-lg bg-black/5 flex items-center justify-center text-neutral-500 shrink-0 mini-icon-box">
+                        <i class="fa-solid fa-record-vinyl text-xs"></i>
+                    </div>
+                    <img id="miniCoverImg" src="" alt="" class="w-8 h-8 rounded-full object-cover shrink-0 shadow-sm border border-black/10 group-hover:scale-105 transition-transform" />
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5">
+                            <p id="miniTitle" class="text-xs font-semibold text-neutral-900 truncate">Heart Sutra (Cho Ver.)</p>
+                            <div id="miniEq" class="flex items-end gap-[2px] h-2.5 paused shrink-0 text-neutral-700">
+                                <span class="eq-bar"></span>
+                                <span class="eq-bar"></span>
+                                <span class="eq-bar"></span>
+                            </div>
+                        </div>
+                        <p id="miniArtist" class="text-[10.5px] text-neutral-500 truncate">Kanho Yakushiji & Kissaquo</p>
+                    </div>
+                </div>
+
+                <!-- Right: Play/Pause & Queue Icon -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button id="miniPlayBtn" aria-label="재생/일시정지" class="w-8 h-8 rounded-full hover:bg-black/5 flex items-center justify-center text-neutral-900 transition-colors">
+                        <i id="miniPlayIcon" class="fa-solid fa-play text-xs ml-0.5"></i>
+                    </button>
+                    <button id="miniNextBtn" aria-label="다음 곡" class="w-8 h-8 rounded-full hover:bg-black/5 flex items-center justify-center text-neutral-700 transition-colors">
+                        <i class="fa-solid fa-forward-step text-xs"></i>
+                    </button>
+                    <button id="miniPullOutBtn" title="현재 앨범 책장에서 꺼내기" class="w-8 h-8 rounded-full hover:bg-black/5 flex items-center justify-center text-neutral-600 transition-colors">
+                        <i class="fa-solid fa-list-ul text-xs"></i>
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- MODAL 1: REAL SPOTIFY INTEGRATION (OAuth PKCE / Token / Demo Sync) -->
+    <div id="spotifyModal" class="hidden fixed inset-0 z-50 bg-black/55 backdrop-blur-xl flex items-center justify-center p-4">
+        <div class="bg-white text-neutral-900 rounded-[30px] p-6 sm:p-7 w-full max-w-lg shadow-2xl border border-black/10 max-h-[90vh] overflow-y-auto apple-scroll">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-2xl bg-[#1DB954]/15 flex items-center justify-center text-[#1DB954] text-xl">
+                        <i class="fa-brands fa-spotify"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold">실제 Spotify 계정 연동</h3>
+                        <p class="text-xs text-neutral-500">내 저장 앨범 · 최근 재생곡 · Spotify 트랙 검색 및 재생</p>
+                    </div>
+                </div>
+                <button id="closeSpotifyModalBtn" class="w-8 h-8 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Connected User Profile Banner (shown when connected) -->
+            <div id="spotifyConnectedBanner" class="hidden mb-4 p-3.5 rounded-2xl bg-[#1DB954]/12 border border-[#1DB954]/30 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-full bg-[#1DB954] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-check"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p id="spotifyUserName" class="text-sm font-bold text-neutral-900 truncate">Spotify 연동 완료</p>
+                        <p id="spotifyUserSub" class="text-xs text-neutral-600 truncate">실제 저장 앨범과 최근 재생곡이 3D 책장에 반영되었습니다.</p>
+                    </div>
+                </div>
+                <button id="disconnectSpotifyBtn" class="px-3 py-1.5 rounded-full bg-white text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 shrink-0">
+                    연동 해제
+                </button>
+            </div>
+
+            <!-- Method A: Official OAuth 2.0 PKCE Login -->
+            <div class="space-y-4">
+                <div class="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-neutral-800">방법 1 · Spotify OAuth 2.0 PKCE 공식 로그인</span>
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">권장</span>
+                    </div>
+                    <p class="text-[11.5px] text-neutral-600 leading-relaxed">
+                        <a href="https://developer.spotify.com/dashboard" target="_blank" class="underline font-semibold text-neutral-900">Spotify Developer Dashboard</a>에서 앱 생성 후 아래 Redirect URI를 등록하고 Client ID를 입력하세요.
+                    </p>
+
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">Redirect URI (복사해서 Spotify 대시보드에 붙여넣기)</label>
+                        <div class="flex items-center gap-1.5">
+                            <input id="redirectUriInput" type="text" readonly class="flex-1 px-3 py-2 rounded-xl bg-white border border-neutral-200 text-[11px] font-mono text-neutral-700">
+                            <button type="button" id="copyRedirectUriBtn" class="px-3 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 shrink-0">
+                                복사
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">Spotify Client ID</label>
+                        <input id="spotifyClientIdInput" type="text" placeholder="예: 8f9a2b3c4d5e6f7a8b9c0d1e2f3a4b5c" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-neutral-200 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#1DB954]">
+                    </div>
+
+                    <button type="button" id="startSpotifyOAuthBtn" class="w-full py-2.5 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
+                        <i class="fa-brands fa-spotify text-base"></i>
+                        <span>Spotify 계정으로 로그인 및 앨범 불러오기</span>
+                    </button>
+                </div>
+
+                <!-- Method B: Direct Access Token Paste -->
+                <div class="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-2.5">
+                    <span class="block text-xs font-bold text-neutral-800">방법 2 · 발급받은 Spotify Access Token 직접 입력</span>
+                    <div class="flex gap-2">
+                        <input id="spotifyDirectTokenInput" type="password" placeholder="BQD... 형태의 Access Token 붙여넣기" class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-neutral-200 text-xs font-mono focus:outline-none focus:border-[#1DB954]">
+                        <button type="button" id="applyDirectTokenBtn" class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 shrink-0">
+                            연결
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: SEARCH SPOTIFY & LOCAL SHELF -->
+    <div id="searchModal" class="hidden fixed inset-0 z-50 bg-black/55 backdrop-blur-xl flex items-center justify-center p-4">
+        <div class="bg-white text-neutral-900 rounded-[30px] p-6 w-full max-w-xl shadow-2xl border border-black/10 max-h-[85vh] flex flex-col">
+            <div class="flex items-center gap-2.5 pb-3 border-b border-neutral-200">
+                <i class="fa-solid fa-magnifying-glass text-neutral-400 text-sm ml-1"></i>
+                <input id="globalSearchInput" type="text" placeholder="Spotify 곡/앨범 또는 내 책장 검색..." class="flex-1 text-sm font-medium bg-transparent focus:outline-none text-neutral-900">
+                <button id="closeSearchModalBtn" class="w-8 h-8 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                </button>
+            </div>
+
+            <div id="searchResultsContainer" class="flex-1 overflow-y-auto apple-scroll mt-3 space-y-2 pr-1">
+                <p class="text-xs text-neutral-500 text-center py-8">검색어를 입력하면 내 3D 책장과 연동된 Spotify 카탈로그에서 즉시 찾아드립니다.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: ADD LOCAL MUSIC / CUSTOM TRACK -->
+    <div id="addTrackModal" class="hidden fixed inset-0 z-50 bg-black/55 backdrop-blur-xl flex items-center justify-center p-4">
+        <div class="bg-white text-neutral-900 rounded-[30px] p-6 w-full max-w-md shadow-2xl border border-black/10">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-bold">내 음악 추가하기</h3>
+                    <p class="text-xs text-neutral-500">MP3 / WAV / M4A 오디오 파일 또는 커스텀 앨범 추가</p>
+                </div>
+                <button id="closeAddModalBtn" class="w-8 h-8 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                </button>
+            </div>
+
+            <form id="addTrackForm" class="space-y-3.5">
+                <label class="flex flex-col items-center justify-center w-full h-24 rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 hover:bg-neutral-100 transition-colors cursor-pointer px-4 text-center">
+                    <i class="fa-solid fa-cloud-arrow-up text-lg text-neutral-700 mb-1"></i>
+                    <span id="audioFileLabel" class="text-xs font-semibold text-neutral-800">기기에서 오디오 파일 선택 (다중 선택 가능)</span>
+                    <span class="text-[10.5px] text-neutral-500 mt-0.5">선택하지 않으면 내장 감성 신디사이저 트랙으로 추가됩니다</span>
+                    <input id="audioFileInput" type="file" accept="audio/*" multiple class="hidden">
+                </label>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">곡 제목</label>
+                        <input id="newTrackTitle" type="text" placeholder="예: 새벽의 유영" class="w-full px-3 py-2 rounded-xl bg-neutral-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">아티스트</label>
+                        <input id="newTrackArtist" type="text" placeholder="예: 나만의 기록" class="w-full px-3 py-2 rounded-xl bg-neutral-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">저장할 앨범</label>
+                        <select id="targetAlbumSelect" class="w-full px-3 py-2 rounded-xl bg-neutral-100 text-xs font-medium focus:outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-neutral-600 mb-1">커버 이미지 (선택)</label>
+                        <label class="flex items-center justify-center w-full px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-xs font-medium text-neutral-700 cursor-pointer truncate">
+                            <i class="fa-regular fa-image mr-1.5"></i>
+                            <span id="coverFileLabel" class="truncate">이미지 선택</span>
+                            <input id="coverFileInput" type="file" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" id="cancelAddModalBtn" class="px-4 py-2 rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700">취소</button>
+                    <button type="submit" class="px-5 py-2 rounded-full bg-neutral-900 text-white text-xs font-semibold shadow-md hover:bg-neutral-800">
+                        책장에 추가
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Subtle Floating Toast -->
+    <div id="toastMsg" class="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-50 opacity-0 transition-all duration-300 px-4 py-2 rounded-full bg-neutral-900/90 text-white text-xs font-medium shadow-xl backdrop-blur-md">
+        알림
+    </div>
+
+    <audio id="htmlAudioPlayer" preload="metadata" crossorigin="anonymous"></audio>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. PROCEDURAL HIGH-CRAFT ALBUM ARTWORK (Matching image_68225d.jpg aesthetic)
+         * ============================================================================
+         */
+        function createEditorialArt(bgColors, spineText, styleType) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 600;
+            canvas.height = 600;
+            const ctx = canvas.getContext('2d');
+
+            const grad = ctx.createLinearGradient(0, 0, 600, 600);
+            grad.addColorStop(0, bgColors[0]);
+            grad.addColorStop(1, bgColors[1] || bgColors[0]);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 600, 600);
+
+            if (styleType === 'tiles') {
+                // Mint ceramic tile grid inspired by leftmost album in image_68225d.jpg
+                const size = 46;
+                for (let y = 0; y < 600; y += size) {
+                    for (let x = 0; x < 600; x += size) {
+                        const r = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+                        const frac = r - Math.floor(r);
+                        ctx.fillStyle = frac > 0.86 ? '#1f2937' : frac > 0.65 ? '#e5e7eb' : '#589c82';
+                        ctx.fillRect(x + 2, y + 2, size - 4, size - 4);
+                    }
+                }
+            } else if (styleType === 'minimal-white') {
+                // Clean white classical sleeve inspired by center album in image_68225d.jpg
+                ctx.fillStyle = '#f8f8fa';
+                ctx.fillRect(0, 0, 600, 600);
+                ctx.fillStyle = '#18181b';
+                ctx.beginPath();
+                ctx.arc(300, 290, 95, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#f8f8fa';
+                ctx.beginPath();
+                ctx.arc(325, 275, 62, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (styleType === 'sage-frame') {
+                // Muted sage green art frame inspired by right-of-center album in image_68225d.jpg
+                ctx.fillStyle = '#8d9b87';
+                ctx.fillRect(0, 0, 600, 600);
+                ctx.fillStyle = '#d9cbb8';
+                ctx.fillRect(145, 135, 310, 330);
+                ctx.fillStyle = '#5c6b58';
+                ctx.beginPath();
+                ctx.arc(300, 310, 75, Math.PI, 0);
+                ctx.fill();
+            } else if (styleType === 'crimson-floral') {
+                // Vivid crimson graphic sleeve inspired by right side album in image_68225d.jpg
+                ctx.fillStyle = '#c81d25';
+                ctx.fillRect(0, 0, 600, 600);
+                ctx.strokeStyle = '#f4f1de';
+                ctx.lineWidth = 5;
+                for (let i = 0; i < 9; i++) {
+                    ctx.beginPath();
+                    ctx.arc(260 + Math.cos(i) * 90, 300 + Math.sin(i) * 90, 65 + i * 10, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            } else if (styleType === 'deep-indigo') {
+                ctx.fillStyle = '#1e1b4b';
+                ctx.fillRect(0, 0, 600, 600);
+                const orb = ctx.createRadialGradient(340, 240, 20, 340, 240, 240);
+                orb.addColorStop(0, '#818cf8');
+                orb.addColorStop(1, 'transparent');
+                ctx.fillStyle = orb;
+                ctx.fillRect(0, 0, 600, 600);
+            } else if (styleType === 'sky-portrait') {
+                const sky = ctx.createLinearGradient(0, 0, 0, 600);
+                sky.addColorStop(0, '#4f86b5');
+                sky.addColorStop(1, '#9cc4e4');
+                ctx.fillStyle = sky;
+                ctx.fillRect(0, 0, 600, 600);
+                ctx.fillStyle = 'rgba(255,255,255,0.28)';
+                ctx.beginPath();
+                ctx.arc(300, 250, 120, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // Warm wood / amber tones
+                ctx.fillStyle = '#5c3a21';
+                ctx.fillRect(0, 0, 600, 600);
+                ctx.fillStyle = '#d4a373';
+                ctx.fillRect(0, 180, 600, 140);
+            }
+
+            ctx.fillStyle = styleType === 'minimal-white' ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.82)';
+            ctx.font = '600 18px Inter, sans-serif';
+            ctx.fillText(spineText.toUpperCase(), 36, 558);
+
+            return canvas.toDataURL('image/png');
+        }
+
+        const DEFAULT_SHELF_ALBUMS = [
+            {
+                id: 'alb-1',
+                category: 'albums',
+                title: 'Young Fresh Chin II',
+                artist: 'MC HotDog',
+                spineBg: '#589c82',
+                spineTextColor: '#ffffff',
+                ambient: ['#589c82', '#1d352c'],
+                coverUrl: createEditorialArt(['#589c82', '#2d5a49'], 'Young Fresh Chin II', 'tiles'),
+                tracks: [
+                    { id: 'tr-101', title: 'Young Fresh Chin II', artist: 'MC HotDog', duration: 192, chord: [261.63, 329.63, 392.00, 493.88] },
+                    { id: 'tr-102', title: 'Midnight Taipei', artist: 'MC HotDog', duration: 174, chord: [293.66, 349.23, 440.00, 523.25] }
+                ]
+            },
+            {
+                id: 'alb-2',
+                category: 'albums',
+                title: 'Little Ryukyu Cypher',
+                artist: 'VL & Jadakiss',
+                spineBg: '#6b4423',
+                spineTextColor: '#f5ebe0',
+                ambient: ['#8c5a32', '#2b180a'],
+                coverUrl: createEditorialArt(['#6b4423', '#3d2512'], 'Little Ryukyu Cypher', 'amber'),
+                tracks: [
+                    { id: 'tr-201', title: 'Little Ryukyu Cypher', artist: 'VL & Jadakiss', duration: 215, chord: [220.00, 277.18, 329.63, 415.30] }
+                ]
+            },
+            {
+                id: 'alb-3',
+                category: 'albums',
+                title: 'Khaen (LoFi) - Single',
+                artist: 'Sharon Franklin',
+                spineBg: '#231f42',
+                spineTextColor: '#e0e7ff',
+                ambient: ['#4338ca', '#131129'],
+                coverUrl: createEditorialArt(['#231f42', '#110e24'], 'Khaen (LoFi)', 'deep-indigo'),
+                tracks: [
+                    { id: 'tr-301', title: 'Khaen (LoFi)', artist: 'Sharon Franklin', duration: 168, chord: [246.94, 311.13, 369.99, 466.16] },
+                    { id: 'tr-302', title: 'Rain on Windowpane', artist: 'Sharon Franklin', duration: 185, chord: [220.00, 261.63, 329.63, 392.00] }
+                ]
+            },
+            {
+                id: 'alb-4',
+                category: 'albums',
+                title: 'Six Evolutions - Bach: Cello Suites',
+                artist: 'Yo-Yo Ma',
+                spineBg: '#f4f4f6',
+                spineTextColor: '#18181b',
+                ambient: ['#9ca3af', '#1f2937'],
+                coverUrl: createEditorialArt(['#f8f8fa', '#e5e7eb'], 'Bach: Cello Suites', 'minimal-white'),
+                tracks: [
+                    { id: 'tr-401', title: 'Cello Suite No. 1 in G Major, BWV 1007: I. Prélude', artist: 'Yo-Yo Ma', duration: 158, chord: [196.00, 246.94, 293.66, 392.00] },
+                    { id: 'tr-402', title: 'Heart Sutra (Cho Ver.)', artist: 'Kanho Yakushiji & Kissaquo', duration: 244, chord: [261.63, 329.63, 392.00, 493.88] }
+                ]
+            },
+            {
+                id: 'alb-5',
+                category: 'albums',
+                title: 'Kiki - EP',
+                artist: 'sulcole',
+                spineBg: '#9fb8e3',
+                spineTextColor: '#1e293b',
+                ambient: ['#60a5fa', '#1e3a8a'],
+                coverUrl: createEditorialArt(['#9fb8e3', '#5c85d6'], 'Kiki - EP', 'sky-portrait'),
+                tracks: [
+                    { id: 'tr-501', title: 'Kiki', artist: 'sulcole', duration: 189, chord: [293.66, 369.99, 440.00, 554.37] },
+                    { id: 'tr-502', title: 'Blue Horizon', artist: 'sulcole', duration: 201, chord: [261.63, 329.63, 392.00, 493.88] }
+                ]
+            },
+            {
+                id: 'alb-6',
+                category: 'albums',
+                title: 'Green Horizon - Single',
+                artist: 'Two Birds',
+                spineBg: '#8d9b87',
+                spineTextColor: '#ffffff',
+                ambient: ['#6b7c65', '#222920'],
+                coverUrl: createEditorialArt(['#8d9b87', '#687862'], 'Green Horizon', 'sage-frame'),
+                tracks: [
+                    { id: 'tr-601', title: 'Green Horizon', artist: 'Two Birds', duration: 210, chord: [220.00, 277.18, 329.63, 415.30] }
+                ]
+            },
+            {
+                id: 'alb-7',
+                category: 'albums',
+                title: 'Still on My Street',
+                artist: 'Tanya Chua',
+                spineBg: '#5c84ad',
+                spineTextColor: '#ffffff',
+                ambient: ['#4f86b5', '#172b40'],
+                coverUrl: createEditorialArt(['#5c84ad', '#385c82'], 'Still on My Street', 'sky-portrait'),
+                tracks: [
+                    { id: 'tr-701', title: 'Still on My Street', artist: 'Tanya Chua', duration: 226, chord: [246.94, 293.66, 369.99, 440.00] }
+                ]
+            },
+            {
+                id: 'alb-8',
+                category: 'albums',
+                title: 'Crimson Nocturne',
+                artist: 'Atelier Rouge',
+                spineBg: '#c81d25',
+                spineTextColor: '#ffffff',
+                ambient: ['#dc2626', '#3b090c'],
+                coverUrl: createEditorialArt(['#c81d25', '#7f1d1d'], 'Crimson Nocturne', 'crimson-floral'),
+                tracks: [
+                    { id: 'tr-801', title: 'Crimson Nocturne', artist: 'Atelier Rouge', duration: 195, chord: [233.08, 293.66, 349.23, 440.00] }
+                ]
+            },
+            {
+                id: 'alb-user-shelf',
+                category: 'playlists',
+                title: '내가 추가한 음악',
+                artist: 'My Custom Shelf',
+                spineBg: '#1d1d1f',
+                spineTextColor: '#ffffff',
+                ambient: ['#374151', '#111827'],
+                isUserShelf: true,
+                coverUrl: createEditorialArt(['#334155', '#0f172a'], 'My Custom Shelf', 'deep-indigo'),
+                tracks: [
+                    { id: 'tr-u1', title: '나만의 플레이리스트 샘플', artist: 'My Library', duration: 180, chord: [261.63, 329.63, 392.00, 493.88], isUserAdded: true }
+                ]
+            }
+        ];
+
+        /**
+         * ============================================================================
+         * 2. APPLICATION STATE & SPOTIFY PKCE / WEB API CONFIGURATION
+         * ============================================================================
+         */
+        const SPOTIFY_SCOPES = [
+            'user-library-read',
+            'user-read-recently-played',
+            'playlist-read-private',
+            'user-read-playback-state',
+            'user-modify-playback-state'
+        ].join(' ');
+
+        const state = {
+            appName: localStorage.getItem('apple_shelf_app_name') || '나의 뮤직 셸프',
+            albums: [...DEFAULT_SHELF_ALBUMS],
+            activeTab: 'albums', // 'albums' | 'playlists' | 'recent'
+            subListTab: 'recent', // 'recent' | 'added'
+            activeIndex: 4, // Centered on Kiki / Bach area like image_68225d.jpg
+            dragOffset: 0,
+            isDragging: false,
+            dragStartX: 0,
+            dragMoved: false,
+            pulledOutAlbumId: null,
+            currentAlbumId: 'alb-4',
+            currentTrackId: 'tr-402',
+            isPlaying: false,
+            currentTime: 0,
+            volume: 0.85,
+            favorites: new Set(JSON.parse(localStorage.getItem('apple_shelf_favs') || '[]')),
+            recentTrackIds: JSON.parse(localStorage.getItem('apple_shelf_recent') || '["tr-402", "tr-501"]'),
+            // Spotify Integration State
+            spotifyClientId: localStorage.getItem('spotify_client_id') || '',
+            spotifyToken: localStorage.getItem('spotify_access_token') || '',
+            spotifyUser: null,
+            showSpotifyEmbed: false
+        };
+
+        /**
+         * ============================================================================
+         * 3. SPOTIFY REAL OAUTH 2.0 PKCE & WEB API ENGINE
+         * ============================================================================
+         */
+        function getRedirectUri() {
+            return window.location.origin + window.location.pathname;
+        }
+
+        function generateRandomString(length) {
+            const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            const values = crypto.getRandomValues(new Uint8Array(length));
+            return values.reduce((acc, x) => acc + possible[x % possible.length], '');
+        }
+
+        async function sha256(plain) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(plain);
+            return window.crypto.subtle.digest('SHA-256', data);
+        }
+
+        function base64encode(input) {
+            return btoa(String.fromCharCode(...new Uint8Array(input)))
+                .replace(/=/g, '')
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_');
+        }
+
+        async function initiateSpotifyPKCE(clientId) {
+            if (!window.crypto?.subtle || !window.crypto?.getRandomValues) {
+                showToast('Spotify 로그인은 HTTPS 또는 localhost 환경에서 실행해야 합니다.');
+                return;
+            }
+            const codeVerifier = generateRandomString(64);
+            const hashed = await sha256(codeVerifier);
+            const codeChallenge = base64encode(hashed);
+
+            localStorage.setItem('spotify_code_verifier', codeVerifier);
+            localStorage.setItem('spotify_client_id', clientId);
+
+            const authUrl = new URL('https://accounts.spotify.com/authorize');
+            authUrl.search = new URLSearchParams({
+                response_type: 'code',
+                client_id: clientId,
+                scope: SPOTIFY_SCOPES,
+                code_challenge_method: 'S256',
+                code_challenge: codeChallenge,
+                redirect_uri: getRedirectUri()
+            }).toString();
+
+            window.location.href = authUrl.toString();
+        }
+
+        async function handleSpotifyOAuthCallback() {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            if (!code) return;
+
+            const clientId = localStorage.getItem('spotify_client_id');
+            const codeVerifier = localStorage.getItem('spotify_code_verifier');
+            if (!clientId || !codeVerifier) return;
+
+            try {
+                const payload = await fetch('https://accounts.spotify.com/api/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: clientId,
+                        grant_type: 'authorization_code',
+                        code,
+                        redirect_uri: getRedirectUri(),
+                        code_verifier: codeVerifier
+                    })
+                });
+                const data = await payload.json();
+                if (data.access_token) {
+                    state.spotifyToken = data.access_token;
+                    localStorage.setItem('spotify_access_token', data.access_token);
+                    // Clean URL query parameters
+                    window.history.replaceState({}, document.title, getRedirectUri());
+                    showToast('Spotify 계정과 성공적으로 연동되었습니다!');
+                    await syncSpotifyData();
+                } else {
+                    showToast('Spotify 토큰 발급 실패: Client ID와 Redirect URI를 확인하세요');
+                }
+            } catch (err) {
+                showToast('Spotify 인증 중 네트워크 오류가 발생했습니다');
+            }
+        }
+
+        async function spotifyFetch(endpoint, options = {}) {
+            if (!state.spotifyToken) return null;
+            const res = await fetch(`https://api.spotify.com/v1${endpoint}`, {
+                ...options,
+                headers: {
+                    Authorization: `Bearer ${state.spotifyToken}`,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            if (res.status === 401) {
+                // Token expired
+                state.spotifyToken = '';
+                localStorage.removeItem('spotify_access_token');
+                updateSpotifyStatusUI();
+                showToast('Spotify 세션이 만료되었습니다. 다시 연결해주세요.');
+                return null;
+            }
+            if (res.status === 204) return { ok: true };
+            if (!res.ok) return null;
+            return res.json();
+        }
+
+        async function syncSpotifyData() {
+            if (!state.spotifyToken) return;
+            updateSpotifyStatusUI();
+
+            const profile = await spotifyFetch('/me');
+            if (!profile) return;
+            state.spotifyUser = profile;
+            updateSpotifyStatusUI();
+
+            // 1. Fetch User's Real Saved Albums
+            const savedAlbumsData = await spotifyFetch('/me/albums?limit=15');
+            const spotifyAlbums = [];
+
+            if (savedAlbumsData && Array.isArray(savedAlbumsData.items)) {
+                const spinePalette = ['#2d5a49', '#1e1b4b', '#8d9b87', '#5c84ad', '#c81d25', '#6b4423', '#334155'];
+                savedAlbumsData.items.forEach((item, idx) => {
+                    const alb = item.album;
+                    if (!alb) return;
+                    const cover = (alb.images && alb.images[0]) ? alb.images[0].url : DEFAULT_SHELF_ALBUMS[0].coverUrl;
+                    const tracks = (alb.tracks && alb.tracks.items) ? alb.tracks.items.map(t => ({
+                        id: `sp-${t.id}`,
+                        spotifyId: t.id,
+                        spotifyUri: t.uri,
+                        externalUrl: t.external_urls?.spotify,
+                        title: t.name,
+                        artist: t.artists.map(a => a.name).join(', '),
+                        duration: Math.round((t.duration_ms || 180000) / 1000),
+                        audioUrl: t.preview_url || null,
+                        isSpotify: true
+                    })) : [];
+
+                    spotifyAlbums.push({
+                        id: `sp-alb-${alb.id}`,
+                        spotifyId: alb.id,
+                        category: 'albums',
+                        title: alb.name,
+                        artist: alb.artists.map(a => a.name).join(', '),
+                        spineBg: spinePalette[idx % spinePalette.length],
+                        spineTextColor: '#ffffff',
+                        ambient: [spinePalette[idx % spinePalette.length], '#0f172a'],
+                        coverUrl: cover,
+                        isSpotify: true,
+                        tracks
+                    });
+                });
+            }
+
+            // 2. Fetch User's Real Spotify Playlists
+            const playlistsData = await spotifyFetch('/me/playlists?limit=10');
+            if (playlistsData && Array.isArray(playlistsData.items)) {
+                playlistsData.items.forEach((pl, idx) => {
+                    if (!pl) return;
+                    const cover = (pl.images && pl.images[0]) ? pl.images[0].url : DEFAULT_SHELF_ALBUMS[8].coverUrl;
+                    spotifyAlbums.push({
+                        id: `sp-pl-${pl.id}`,
+                        spotifyId: pl.id,
+                        category: 'playlists',
+                        title: pl.name,
+                        artist: `Spotify Playlist · ${pl.tracks?.total || 0}곡`,
+                        spineBg: '#1DB954',
+                        spineTextColor: '#ffffff',
+                        ambient: ['#15803d', '#091510'],
+                        coverUrl: cover,
+                        isSpotify: true,
+                        isPlaylist: true,
+                        tracks: [] // Loaded lazily when pulled out
+                    });
+                });
+            }
+
+            // 3. Fetch Real Recently Played Tracks from Spotify
+            const recentData = await spotifyFetch('/me/player/recently-played?limit=15');
+            if (recentData && Array.isArray(recentData.items)) {
+                const recentTracks = recentData.items.map(entry => {
+                    const t = entry.track;
+                    return {
+                        id: `sp-${t.id}`,
+                        spotifyId: t.id,
+                        spotifyUri: t.uri,
+                        externalUrl: t.external_urls?.spotify,
+                        title: t.name,
+                        artist: t.artists.map(a => a.name).join(', '),
+                        albumTitle: t.album?.name || 'Spotify',
+                        coverUrl: t.album?.images?.[0]?.url || DEFAULT_SHELF_ALBUMS[3].coverUrl,
+                        duration: Math.round((t.duration_ms || 180000) / 1000),
+                        audioUrl: t.preview_url || null,
+                        isSpotify: true
+                    };
+                });
+
+                // Store into a dedicated Spotify Recently Played album on the shelf as well
+                if (recentTracks.length > 0) {
+                    spotifyAlbums.unshift({
+                        id: 'sp-recent-shelf',
+                        category: 'albums',
+                        title: 'Spotify 최근 재생곡',
+                        artist: profile.display_name || 'My Spotify',
+                        spineBg: '#1DB954',
+                        spineTextColor: '#ffffff',
+                        ambient: ['#1DB954', '#0b2214'],
+                        coverUrl: recentTracks[0].coverUrl,
+                        isSpotify: true,
+                        tracks: recentTracks
+                    });
+
+                    // Merge into recentTrackIds
+                    recentTracks.forEach(rt => {
+                        if (!state.recentTrackIds.includes(rt.id)) {
+                            state.recentTrackIds.push(rt.id);
+                        }
+                    });
+                    localStorage.setItem('apple_shelf_recent', JSON.stringify(state.recentTrackIds.slice(0, 30)));
+                }
+            }
+
+            if (spotifyAlbums.length > 0) {
+                const userCustomAlbum = state.albums.find(a => a.id === 'alb-user-shelf');
+                state.albums = [...spotifyAlbums, ...(userCustomAlbum ? [userCustomAlbum] : [])];
+                state.activeIndex = Math.min(2, state.albums.length - 1);
+                renderShelfAlbums();
+                updateBadges();
+                showToast(`Spotify 앨범 ${spotifyAlbums.length}개를 3D 책장에 불러왔습니다`);
+            }
+        }
+
+        async function loadSpotifyPlaylistTracksIfNeeded(album) {
+            if (!album.isPlaylist || !album.spotifyId || album.tracks.length > 0 || !state.spotifyToken) return;
+            const data = await spotifyFetch(`/playlists/${album.spotifyId}/tracks?limit=25`);
+            if (data && Array.isArray(data.items)) {
+                album.tracks = data.items
+                    .filter(i => i.track)
+                    .map(i => {
+                        const t = i.track;
+                        return {
+                            id: `sp-${t.id}`,
+                            spotifyId: t.id,
+                            spotifyUri: t.uri,
+                            externalUrl: t.external_urls?.spotify,
+                            title: t.name,
+                            artist: t.artists.map(a => a.name).join(', '),
+                            duration: Math.round((t.duration_ms || 180000) / 1000),
+                            audioUrl: t.preview_url || null,
+                            coverUrl: t.album?.images?.[0]?.url || album.coverUrl,
+                            isSpotify: true
+                        };
+                    });
+            }
+        }
+
+        function updateSpotifyStatusUI() {
+            const label = document.getElementById('spotifyStatusLabel');
+            const dot = document.getElementById('spotifyDot');
+            const banner = document.getElementById('spotifyConnectedBanner');
+            if (state.spotifyToken) {
+                label.textContent = state.spotifyUser?.display_name || 'Spotify 연동됨';
+                dot.className = 'w-2 h-2 rounded-full bg-[#1DB954] shadow-[0_0_8px_#1DB954]';
+                banner.classList.remove('hidden');
+                if (state.spotifyUser) {
+                    document.getElementById('spotifyUserName').textContent = `${state.spotifyUser.display_name} 님 연동됨`;
+                }
+            } else {
+                label.textContent = 'Spotify 연동';
+                dot.className = 'w-2 h-2 rounded-full bg-neutral-400';
+                banner.classList.add('hidden');
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 4. HYBRID AUDIO ENGINE (Spotify Connect / Preview MP3 / Local File / Synth)
+         * ============================================================================
+         */
+        const htmlAudio = document.getElementById('htmlAudioPlayer');
+        let audioCtx = null;
+        let synthInterval = null;
+        let progressInterval = null;
+
+        function ensureAudioCtx() {
+            if (!audioCtx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AC();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function triggerSynthChord(freq) {
+            if (!audioCtx || !state.isPlaying) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.055 * state.volume), now + 0.35);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 2.4);
+            } catch (e) {}
+        }
+
+        function stopAllPlayback() {
+            htmlAudio.pause();
+            if (synthInterval) clearInterval(synthInterval);
+            if (progressInterval) clearInterval(progressInterval);
+        }
+
+        async function playTrack(track) {
+            if (!track) return;
+            stopAllPlayback();
+            state.isPlaying = true;
+            recordRecent(track.id);
+
+            // Update Spotify Official Embed if this is a Spotify track
+            const embedToggleBtn = document.getElementById('toggleSpotifyEmbedBtn');
+            const embedBox = document.getElementById('spotifyEmbedContainer');
+            const embedFrame = document.getElementById('spotifyEmbedFrame');
+
+            if (track.isSpotify && track.spotifyId) {
+                embedToggleBtn.classList.remove('hidden');
+                embedFrame.src = `https://open.spotify.com/embed/track/${track.spotifyId}?utm_source=generator&theme=0`;
+                // If user has an active Spotify Connect device, trigger playback there too
+                if (state.spotifyToken && track.spotifyUri) {
+                    spotifyFetch('/me/player/play', {
+                        method: 'PUT',
+                        body: JSON.stringify({ uris: [track.spotifyUri] })
+                    }).catch(() => {});
+                }
+            } else {
+                embedToggleBtn.classList.add('hidden');
+                embedBox.classList.add('hidden');
+            }
+
+            if (track.audioUrl) {
+                // Plays real local uploaded MP3/WAV/M4A OR Spotify 30s preview_url
+                htmlAudio.src = track.audioUrl;
+                htmlAudio.volume = state.volume;
+                htmlAudio.currentTime = state.currentTime;
+                htmlAudio.play().catch(() => {
+                    // Fallback to Spotify Embed if browser blocks or preview unavailable
+                    if (track.isSpotify && track.spotifyId) {
+                        embedBox.classList.remove('hidden');
+                    }
+                });
+            } else {
+                // If Spotify track without preview_url, automatically show Spotify Web Player Embed
+                if (track.isSpotify && track.spotifyId) {
+                    embedBox.classList.remove('hidden');
+                }
+                ensureAudioCtx();
+                const chord = track.chord || [261.63, 329.63, 392.00, 493.88];
+                let step = 0;
+                triggerSynthChord(chord[0]);
+                synthInterval = setInterval(() => {
+                    if (!state.isPlaying) return;
+                    triggerSynthChord(chord[step % chord.length]);
+                    step++;
+                }, 1450);
+
+                progressInterval = setInterval(() => {
+                    if (!state.isPlaying) return;
+                    state.currentTime += 0.25;
+                    if (state.currentTime >= track.duration) {
+                        nextTrack();
+                    } else {
+                        updateProgressUI();
+                    }
+                }, 250);
+            }
+
+            updatePlayerUI();
+        }
+
+        function pauseTrack() {
+            state.isPlaying = false;
+            stopAllPlayback();
+            if (state.spotifyToken) {
+                spotifyFetch('/me/player/pause', { method: 'PUT' }).catch(() => {});
+            }
+            updatePlayerUI();
+        }
+
+        htmlAudio.addEventListener('timeupdate', () => {
+            const t = findTrackById(state.currentTrackId);
+            if (t && t.audioUrl) {
+                state.currentTime = htmlAudio.currentTime;
+                if (!isNaN(htmlAudio.duration) && htmlAudio.duration > 0) {
+                    t.duration = Math.floor(htmlAudio.duration);
+                }
+                updateProgressUI();
+            }
+        });
+
+        htmlAudio.addEventListener('ended', nextTrack);
+
+        /**
+         * ============================================================================
+         * 5. 3D BOOKSHELF CAROUSEL & PULL-OUT MOTION ("책장에서 뽑는 듯한 모션")
+         * ============================================================================
+         */
+        const shelfStage = document.getElementById('shelfStage');
+        const shelfViewport = document.getElementById('shelfViewport');
+
+        function getVisibleShelfAlbums() {
+            if (state.activeTab === 'playlists') {
+                const pls = state.albums.filter(a => a.category === 'playlists' || a.isUserShelf);
+                return pls.length > 0 ? pls : state.albums;
+            }
+            return state.albums;
+        }
+
+        function renderShelfAlbums() {
+            const visibleAlbums = getVisibleShelfAlbums();
+            if (!visibleAlbums.length) { shelfStage.innerHTML = ''; return; }
+            if (state.activeIndex >= visibleAlbums.length) {
+                state.activeIndex = Math.max(0, Math.floor(visibleAlbums.length / 2));
+            }
+
+            shelfStage.innerHTML = '';
+            visibleAlbums.forEach((album, idx) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'album-3d-wrapper';
+                wrapper.dataset.index = idx;
+                wrapper.dataset.albumId = album.id;
+
+                wrapper.innerHTML = `
+                    <div class="album-box">
+                        <div class="album-spine" style="background:${album.spineBg}; color:${album.spineTextColor || '#fff'};">
+                            <span>${album.title}</span>
+                        </div>
+                        <div class="album-front">
+                            <img src="${album.coverUrl}" alt="${album.title}" class="w-full h-full object-cover pointer-events-none" />
+                        </div>
+                        <div class="album-edge-right"></div>
+                        <div class="album-edge-top"></div>
+                        <div class="album-edge-bottom"></div>
+                        <div class="album-back"></div>
+                    </div>
+                `;
+
+                wrapper.addEventListener('click', (e) => {
+                    if (state.dragMoved) return;
+                    e.stopPropagation();
+                    onShelfAlbumClicked(idx, album.id);
+                });
+
+                shelfStage.appendChild(wrapper);
+            });
+
+            updateShelfTransforms();
+        }
+
+        /**
+         * Exact V-Shaped Bookshelf Geometry matching image_68225d.jpg:
+         * - Center album stands nearly perpendicular showing its vertical spine & sleek edge
+         * - Left albums rotate inward to the right (+68deg to +78deg) showing angled front covers
+         * - Right albums rotate inward to the left (-68deg to -78deg) showing angled front covers
+         */
+        function updateShelfTransforms() {
+            const visibleAlbums = getVisibleShelfAlbums();
+            const wrappers = shelfStage.querySelectorAll('.album-3d-wrapper');
+            const isMobile = window.innerWidth < 640;
+            const slotSpacing = isMobile ? 52 : 78;
+            const continuousIdx = state.activeIndex - state.dragOffset / slotSpacing;
+
+            wrappers.forEach((el, idx) => {
+                const album = visibleAlbums[idx];
+                if (!album) return;
+                const offset = idx - continuousIdx;
+                const absOffset = Math.abs(offset);
+
+                if (state.isDragging) el.classList.add('dragging');
+                else el.classList.remove('dragging');
+
+                if (state.pulledOutAlbumId === album.id) {
+                    el.classList.add('pulled-out');
+                    el.style.opacity = '1';
+                    el.style.filter = 'brightness(1.03)';
+                    el.style.transform = `translate3d(0px, -18px, 420px) rotateY(0deg) scale(1.06)`;
+                    return;
+                } else {
+                    el.classList.remove('pulled-out');
+                }
+
+                const clamped = Math.max(-5.5, Math.min(5.5, offset));
+                const centerSpread = offset === 0 ? 0 : (offset > 0 ? 16 : -16);
+                const translateX = clamped * slotSpacing + centerSpread;
+                const translateZ = -Math.min(absOffset, 5) * 26 + (absOffset < 0.35 ? 24 : 0);
+
+                let rotateY;
+                if (absOffset < 0.35) {
+                    rotateY = -82 * (1 - absOffset * 2) + (offset < 0 ? 72 * (absOffset * 2) : -72 * (absOffset * 2));
+                } else if (offset < 0) {
+                    rotateY = Math.max(58, 76 - absOffset * 2.5);
+                } else {
+                    rotateY = Math.min(-58, -76 + absOffset * 2.5);
+                }
+
+                el.style.zIndex = Math.round(60 - absOffset * 8);
+                el.style.opacity = absOffset > 5.4 ? '0' : '1';
+                el.style.filter = absOffset < 0.4 ? 'brightness(1.02)' : `brightness(${Math.max(0.78, 0.98 - absOffset * 0.03)})`;
+                el.style.transform = `translate3d(${translateX}px, 0px, ${translateZ}px) rotateY(${rotateY}deg)`;
+            });
+
+            const nearestIdx = Math.max(0, Math.min(visibleAlbums.length - 1, Math.round(continuousIdx)));
+            const focused = visibleAlbums[nearestIdx];
+            if (focused && !state.pulledOutAlbumId) {
+                document.getElementById('shelfAlbumTitle').textContent = focused.title;
+                document.getElementById('shelfAlbumArtist').textContent = `${focused.artist} · 탭하여 책장에서 꺼내기`;
+            }
+        }
+
+        function onShelfAlbumClicked(idx, albumId) {
+            if (idx !== state.activeIndex) {
+                state.activeIndex = idx;
+                updateShelfTransforms();
+                setTimeout(() => pullOutAlbumFromShelf(albumId), 240);
+            } else {
+                pullOutAlbumFromShelf(albumId);
+            }
+        }
+
+        async function pullOutAlbumFromShelf(albumId) {
+            const album = state.albums.find(a => a.id === albumId);
+            if (!album) return;
+
+            state.pulledOutAlbumId = albumId;
+            updateShelfTransforms();
+
+            await loadSpotifyPlaylistTracksIfNeeded(album);
+
+            // Switch ambient backdrop and body theme to Apple Dark Glass
+            if (album.ambient) {
+                document.documentElement.style.setProperty('--ambient-1', album.ambient[0]);
+                document.documentElement.style.setProperty('--ambient-2', album.ambient[1]);
+            }
+
+            if (state.currentAlbumId !== albumId && album.tracks.length > 0) {
+                state.currentAlbumId = albumId;
+                state.currentTrackId = album.tracks[0].id;
+                state.currentTime = 0;
+                playTrack(album.tracks[0]);
+            }
+
+            // Smooth handoff after the 3D pull-out motion peaks
+            setTimeout(() => {
+                document.body.classList.add('player-active');
+                applyHeaderTheme(true);
+                renderPulledOutView(album);
+                showMainSection('pulledOutView');
+            }, 460);
+        }
+
+        function putAlbumBackInShelf() {
+            document.body.classList.remove('player-active');
+            applyHeaderTheme(false);
+            showMainSection('shelfView');
+            setTimeout(() => {
+                state.pulledOutAlbumId = null;
+                updateShelfTransforms();
+            }, 70);
+        }
+
+        function applyHeaderTheme(isDark) {
+            const titleInput = document.getElementById('appTitleInput');
+            const pills = document.querySelectorAll('.header-pill');
+            if (isDark) {
+                titleInput.classList.remove('text-neutral-900');
+                titleInput.classList.add('text-white');
+                pills.forEach(p => {
+                    p.classList.remove('pill-light');
+                    p.classList.add('pill-dark');
+                });
+            } else {
+                titleInput.classList.add('text-neutral-900');
+                titleInput.classList.remove('text-white');
+                pills.forEach(p => {
+                    p.classList.add('pill-light');
+                    p.classList.remove('pill-dark');
+                });
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 6. DRAG / SWIPE / WHEEL / KEYBOARD CONTROLS FOR 3D BOOKSHELF
+         * ============================================================================
+         */
+        function handleDragStart(x) {
+            if (state.pulledOutAlbumId || state.activeTab === 'recent') return;
+            state.isDragging = true;
+            state.dragStartX = x;
+            state.dragOffset = 0;
+            state.dragMoved = false;
+        }
+
+        function handleDragMove(x) {
+            if (!state.isDragging) return;
+            const dx = x - state.dragStartX;
+            if (Math.abs(dx) > 5) state.dragMoved = true;
+            state.dragOffset = dx;
+            updateShelfTransforms();
+        }
+
+        function handleDragEnd() {
+            if (!state.isDragging) return;
+            state.isDragging = false;
+            const visibleAlbums = getVisibleShelfAlbums();
+            const isMobile = window.innerWidth < 640;
+            const slotSpacing = isMobile ? 54 : 84;
+            const steps = Math.round(state.dragOffset / (slotSpacing * 0.8));
+            state.activeIndex = Math.max(0, Math.min(visibleAlbums.length - 1, state.activeIndex - steps));
+            state.dragOffset = 0;
+            updateShelfTransforms();
+            setTimeout(() => { state.dragMoved = false; }, 60);
+        }
+
+        shelfViewport.addEventListener('mousedown', e => handleDragStart(e.clientX));
+        window.addEventListener('mousemove', e => handleDragMove(e.clientX));
+        window.addEventListener('mouseup', handleDragEnd);
+
+        shelfViewport.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) handleDragStart(e.touches[0].clientX);
+        }, { passive: true });
+        shelfViewport.addEventListener('touchmove', e => {
+            if (e.touches.length === 1) handleDragMove(e.touches[0].clientX);
+        }, { passive: true });
+        shelfViewport.addEventListener('touchend', handleDragEnd);
+
+        let wheelLock = false;
+        shelfViewport.addEventListener('wheel', e => {
+            if (state.pulledOutAlbumId || state.activeTab === 'recent') return;
+            e.preventDefault();
+            if (wheelLock) return;
+            const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            if (Math.abs(delta) > 10) {
+                wheelLock = true;
+                const visibleAlbums = getVisibleShelfAlbums();
+                state.activeIndex = delta > 0
+                    ? Math.min(visibleAlbums.length - 1, state.activeIndex + 1)
+                    : Math.max(0, state.activeIndex - 1);
+                updateShelfTransforms();
+                setTimeout(() => { wheelLock = false; }, 160);
+            }
+        }, { passive: false });
+
+        document.getElementById('prevShelfBtn').addEventListener('click', () => {
+            state.activeIndex = Math.max(0, state.activeIndex - 1);
+            updateShelfTransforms();
+        });
+
+        document.getElementById('nextShelfBtn').addEventListener('click', () => {
+            const visibleAlbums = getVisibleShelfAlbums();
+            state.activeIndex = Math.min(visibleAlbums.length - 1, state.activeIndex + 1);
+            updateShelfTransforms();
+        });
+
+        document.getElementById('focusedAlbumTrigger').addEventListener('click', () => {
+            const visibleAlbums = getVisibleShelfAlbums();
+            const album = visibleAlbums[state.activeIndex];
+            if (album) pullOutAlbumFromShelf(album.id);
+        });
+
+        window.addEventListener('resize', updateShelfTransforms);
+
+        /**
+         * ============================================================================
+         * 7. VIEW MANAGEMENT, PULLED-OUT PLAYER & RECENTLY PLAYED / ADDED LISTS
+         * ============================================================================
+         */
+        function showMainSection(sectionId) {
+            ['shelfView', 'pulledOutView', 'recentAddedView'].forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.add('hidden', 'opacity-0');
+                if (id === 'pulledOutView') el.classList.add('translate-y-6');
+                else el.classList.add('scale-95');
+            });
+            const target = document.getElementById(sectionId);
+            target.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                target.classList.remove('opacity-0', 'scale-95', 'translate-y-6');
+            });
+        }
+        function updatePlayerUI() {
+            const track = findTrackById(state.currentTrackId) || findTrackById('tr-402');
+            if (!track) return;
+
+            document.getElementById('playerTitle').textContent = track.title;
+            document.getElementById('playerArtist').textContent = track.artist;
+
+            const pulledImg = document.getElementById('pulledCoverImg');
+            if (pulledImg.src !== track.coverUrl) {
+                pulledImg.classList.remove('art-3d-transition');
+                void pulledImg.offsetWidth;
+                pulledImg.src = track.coverUrl;
+                pulledImg.classList.add('art-3d-transition');
+            }
+
+            document.getElementById('miniTitle').textContent = track.title;
+            document.getElementById('miniArtist').textContent = track.artist;
+            document.getElementById('miniCoverImg').src = track.coverUrl;
+
+            const favBtn = document.getElementById('favTrackBtn');
+            favBtn.innerHTML = state.favorites.has(track.id)
+                ? '<i class="fa-solid fa-star text-sm text-amber-300"></i>'
+                : '<i class="fa-regular fa-star text-sm"></i>';
+
+            const iconCls = state.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+            const miniIconCls = state.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play ml-0.5';
+            document.getElementById('playPauseIcon').className = iconCls;
+            document.getElementById('miniPlayIcon').className = miniIconCls;
+
+            const eq = document.getElementById('miniEq');
+            if (state.isPlaying) eq.classList.remove('paused');
+            else eq.classList.add('paused');
+
+            updateProgressUI();
+        }
+
+
+        // ---------------------------------------------------------------------
+        // Missing core UI helpers restored: playback, track lists, tabs and badges
+        // ---------------------------------------------------------------------
+        function findTrackById(id) {
+            for (const album of state.albums) {
+                const track = (album.tracks || []).find(t => t.id === id);
+                if (track) return track;
+            }
+            return null;
+        }
+
+        function getCurrentAlbum() {
+            return state.albums.find(a => a.id === state.currentAlbumId) || state.albums[0];
+        }
+
+        function recordRecent(trackId) {
+            state.recentTrackIds = [trackId, ...state.recentTrackIds.filter(id => id !== trackId)].slice(0, 30);
+            try { localStorage.setItem('apple_shelf_recent', JSON.stringify(state.recentTrackIds)); } catch (_) {}
+            updateBadges();
+        }
+
+        function formatTime(seconds) {
+            const value = Math.max(0, Math.floor(Number(seconds) || 0));
+            return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+        }
+
+        function updateProgressUI() {
+            const track = findTrackById(state.currentTrackId);
+            if (!track) return;
+            const duration = Math.max(1, Number(track.duration) || 180);
+            const current = Math.min(duration, Math.max(0, state.currentTime || 0));
+            const slider = document.getElementById('progressSlider');
+            slider.value = String((current / duration) * 100);
+            document.getElementById('currentTimeLabel').textContent = formatTime(current);
+            document.getElementById('remainingTimeLabel').textContent = `-${formatTime(duration - current)}`;
+        }
+
+        function getCurrentTrackList() {
+            const album = getCurrentAlbum();
+            return album ? (album.tracks || []) : [];
+        }
+
+        function renderPulledOutView(album) {
+            if (!album) return;
+            document.getElementById('pulledAlbumName').textContent = album.title;
+            document.getElementById('pulledAlbumSub').textContent = `${album.artist} · ${(album.tracks || []).length}곡`;
+            const list = document.getElementById('pulledTrackList');
+            list.innerHTML = '';
+
+            (album.tracks || []).forEach((track, index) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'w-full flex items-center gap-3 p-2.5 rounded-xl text-left hover:bg-white/10 transition-colors';
+                const active = track.id === state.currentTrackId;
+                row.innerHTML = `
+                    <span class="w-6 text-center text-xs ${active ? 'text-emerald-300' : 'text-white/45'}">${active ? '<i class="fa-solid fa-volume-high"></i>' : index + 1}</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-xs font-semibold text-white truncate"></span>
+                        <span class="block text-[11px] text-white/55 truncate"></span>
+                    </span>
+                    <span class="text-[10px] text-white/45">${formatTime(track.duration)}</span>`;
+                row.querySelectorAll('span')[1].children[0].textContent = track.title;
+                row.querySelectorAll('span')[1].children[1].textContent = track.artist;
+                row.addEventListener('click', () => {
+                    state.currentAlbumId = album.id;
+                    state.currentTrackId = track.id;
+                    state.currentTime = 0;
+                    playTrack(track);
+                    renderPulledOutView(album);
+                });
+                list.appendChild(row);
+            });
+            updatePlayerUI();
+        }
+
+        function renderRecentAddedList() {
+            const container = document.getElementById('recentAddedListContainer');
+            const recent = state.subListTab === 'recent';
+            const tracks = [];
+            if (recent) {
+                state.recentTrackIds.forEach(id => {
+                    const track = findTrackById(id);
+                    if (track && !tracks.some(t => t.id === id)) tracks.push(track);
+                });
+            } else {
+                state.albums.forEach(album => (album.tracks || []).forEach(track => {
+                    if (track.isUserAdded && !tracks.some(t => t.id === track.id)) tracks.push(track);
+                }));
+            }
+
+            document.getElementById('subTabRecent').className = `px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${recent ? 'bg-neutral-900 text-white' : 'bg-black/5 text-neutral-700 hover:bg-black/10'}`;
+            document.getElementById('subTabAdded').className = `px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${!recent ? 'bg-neutral-900 text-white' : 'bg-black/5 text-neutral-700 hover:bg-black/10'}`;
+            container.innerHTML = '';
+            if (!tracks.length) {
+                container.innerHTML = `<p class="text-xs text-neutral-500 text-center py-10">${recent ? '최근 재생한 곡이 없습니다.' : '직접 추가한 곡이 없습니다.'}</p>`;
+            } else {
+                tracks.forEach(track => {
+                    const album = state.albums.find(a => (a.tracks || []).some(t => t.id === track.id));
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.className = 'w-full flex items-center gap-3 p-2.5 rounded-2xl text-left hover:bg-black/5 transition-colors';
+                    row.innerHTML = `
+                        <img class="w-11 h-11 rounded-xl object-cover shrink-0" alt="">
+                        <span class="min-w-0 flex-1"><span class="block text-xs font-bold text-neutral-900 truncate"></span><span class="block text-[11px] text-neutral-500 truncate"></span></span>
+                        <span class="text-[10px] text-neutral-400">${formatTime(track.duration)}</span>`;
+                    row.querySelector('img').src = track.coverUrl || album?.coverUrl || '';
+                    row.querySelectorAll('span')[1].children[0].textContent = track.title;
+                    row.querySelectorAll('span')[1].children[1].textContent = `${track.artist} · ${album?.title || '내 음악'}`;
+                    row.addEventListener('click', () => {
+                        if (album) state.currentAlbumId = album.id;
+                        state.currentTrackId = track.id;
+                        state.currentTime = 0;
+                        playTrack(track);
+                        if (album) pullOutAlbumFromShelf(album.id);
+                    });
+                    container.appendChild(row);
+                });
+            }
+            document.getElementById('recentCountLabel').textContent = String(state.recentTrackIds.length);
+            document.getElementById('addedCountLabel').textContent = String(state.albums.reduce((n, a) => n + (a.tracks || []).filter(t => t.isUserAdded).length, 0));
+        }
+
+        function updateBadges() {
+            const recentCount = document.getElementById('recentCountLabel');
+            const addedCount = document.getElementById('addedCountLabel');
+            if (recentCount) recentCount.textContent = String(state.recentTrackIds.length);
+            if (addedCount) addedCount.textContent = String(state.albums.reduce((n, a) => n + (a.tracks || []).filter(t => t.isUserAdded).length, 0));
+        }
+
+        function nextTrack() {
+            const tracks = getCurrentTrackList();
+            if (!tracks.length) return;
+            let index = tracks.findIndex(t => t.id === state.currentTrackId);
+            index = index < 0 ? 0 : (index + 1) % tracks.length;
+            state.currentTrackId = tracks[index].id;
+            state.currentTime = 0;
+            playTrack(tracks[index]);
+            const album = getCurrentAlbum();
+            if (state.pulledOutAlbumId && album) renderPulledOutView(album);
+        }
+
+        function prevTrack() {
+            const tracks = getCurrentTrackList();
+            if (!tracks.length) return;
+            if (state.currentTime > 3) {
+                state.currentTime = 0;
+                if (findTrackById(state.currentTrackId)?.audioUrl) htmlAudio.currentTime = 0;
+                updateProgressUI();
+                return;
+            }
+            let index = tracks.findIndex(t => t.id === state.currentTrackId);
+            index = index < 0 ? 0 : (index - 1 + tracks.length) % tracks.length;
+            state.currentTrackId = tracks[index].id;
+            state.currentTime = 0;
+            playTrack(tracks[index]);
+            const album = getCurrentAlbum();
+            if (state.pulledOutAlbumId && album) renderPulledOutView(album);
+        }
+
+        function togglePlayPause() {
+            if (state.isPlaying) {
+                pauseTrack();
+                return;
+            }
+            const track = findTrackById(state.currentTrackId) || getCurrentTrackList()[0];
+            if (track) playTrack(track);
+        }
+
+        function setSegmentedTab(tab) {
+            state.activeTab = tab;
+            state.activeIndex = 0;
+            document.querySelectorAll('.seg-btn').forEach(btn => {
+                const active = btn.dataset.tab === tab;
+                btn.className = `seg-btn px-3 sm:px-4 py-1 rounded-full text-xs transition-all ${active ? 'font-semibold bg-white text-neutral-900 shadow-sm' : 'font-medium text-neutral-500 hover:text-neutral-900'}`;
+            });
+            if (tab === 'recent') {
+                showMainSection('recentAddedView');
+                renderRecentAddedList();
+            } else {
+                showMainSection('shelfView');
+                renderShelfAlbums();
+            }
+        }
+
+        document.querySelectorAll('.seg-btn').forEach(btn => {
+            btn.addEventListener('click', () => setSegmentedTab(btn.dataset.tab));
+        });
+
+        document.getElementById('subTabRecent').addEventListener('click', () => {
+            state.subListTab = 'recent';
+            renderRecentAddedList();
+        });
+
+        document.getElementById('subTabAdded').addEventListener('click', () => {
+            state.subListTab = 'added';
+            renderRecentAddedList();
+        });
+
+        /**
+         * ============================================================================
+         * 9. EVENT WIRING FOR PLAYER, SPOTIFY MODAL, SEARCH MODAL & FILE UPLOAD
+         * ============================================================================
+         */
+        document.getElementById('playPauseBtn').addEventListener('click', togglePlayPause);
+        document.getElementById('miniPlayBtn').addEventListener('click', togglePlayPause);
+        document.getElementById('nextTrackBtn').addEventListener('click', nextTrack);
+        document.getElementById('miniNextBtn').addEventListener('click', nextTrack);
+        document.getElementById('prevTrackBtn').addEventListener('click', prevTrack);
+        document.getElementById('putBackBtn').addEventListener('click', putAlbumBackInShelf);
+        document.getElementById('topGrabberBtn').addEventListener('click', putAlbumBackInShelf);
+
+        // Fullscreen Player Queue Drawer & Sing Mode Toggles
+        const queueDrawer = document.getElementById('fullscreenQueueDrawer');
+        document.getElementById('toggleQueueSheetBtn').addEventListener('click', () => queueDrawer.classList.toggle('hidden'));
+        document.getElementById('bottomQueueBtn').addEventListener('click', () => queueDrawer.classList.toggle('hidden'));
+        document.getElementById('closeQueueDrawerBtn').addEventListener('click', () => queueDrawer.classList.add('hidden'));
+
+        document.getElementById('singModeBtn').addEventListener('click', e => {
+            e.currentTarget.classList.toggle('bg-white/25');
+            e.currentTarget.classList.toggle('text-white');
+            showToast('Apple Sing 보컬 밸런스 모드가 전환되었습니다');
+        });
+        document.getElementById('lyricsToggleBtn').addEventListener('click', () => {
+            queueDrawer.classList.toggle('hidden');
+        });
+
+        // Swipe down on Fullscreen Player to return to 3D Bookshelf
+        let fsTouchStartY = 0;
+        const pulledOutEl = document.getElementById('pulledOutView');
+        pulledOutEl.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) fsTouchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        pulledOutEl.addEventListener('touchend', e => {
+            if (!queueDrawer.classList.contains('hidden')) return;
+            const dy = e.changedTouches[0].clientY - fsTouchStartY;
+            if (dy > 95) putAlbumBackInShelf();
+        });
+        document.getElementById('miniPullOutBtn').addEventListener('click', () => {
+            setSegmentedTab('albums');
+            pullOutAlbumFromShelf(state.currentAlbumId);
+        });
+
+        document.getElementById('progressSlider').addEventListener('input', e => {
+            const track = findTrackById(state.currentTrackId);
+            if (!track) return;
+            const t = (parseFloat(e.target.value) / 100) * track.duration;
+            state.currentTime = t;
+            if (track.audioUrl && !isNaN(htmlAudio.duration)) htmlAudio.currentTime = t;
+            updateProgressUI();
+        });
+
+        document.getElementById('volumeSlider').addEventListener('input', e => {
+            state.volume = parseFloat(e.target.value);
+            htmlAudio.volume = state.volume;
+        });
+
+        document.getElementById('favTrackBtn').addEventListener('click', () => {
+            const id = state.currentTrackId;
+            if (state.favorites.has(id)) state.favorites.delete(id);
+            else state.favorites.add(id);
+            localStorage.setItem('apple_shelf_favs', JSON.stringify([...state.favorites]));
+            updatePlayerUI();
+        });
+
+        document.getElementById('toggleSpotifyEmbedBtn').addEventListener('click', () => {
+            const box = document.getElementById('spotifyEmbedContainer');
+            box.classList.toggle('hidden');
+        });
+
+        document.getElementById('openSpotifyTrackBtn').addEventListener('click', () => {
+            const tr = findTrackById(state.currentTrackId);
+            if (tr && tr.externalUrl) window.open(tr.externalUrl, '_blank');
+            else document.getElementById('spotifyModal').classList.remove('hidden');
+        });
+
+        // Spotify Modal Controls
+        const spotifyModal = document.getElementById('spotifyModal');
+        document.getElementById('openSpotifyModalBtn').addEventListener('click', () => {
+            document.getElementById('redirectUriInput').value = getRedirectUri();
+            document.getElementById('spotifyClientIdInput').value = state.spotifyClientId;
+            spotifyModal.classList.remove('hidden');
+        });
+        document.getElementById('closeSpotifyModalBtn').addEventListener('click', () => spotifyModal.classList.add('hidden'));
+
+        document.getElementById('copyRedirectUriBtn').addEventListener('click', () => {
+            const input = document.getElementById('redirectUriInput');
+            input.select();
+            document.execCommand('copy');
+            showToast('Redirect URI가 클립보드에 복사되었습니다');
+        });
+
+        document.getElementById('startSpotifyOAuthBtn').addEventListener('click', () => {
+            const cid = document.getElementById('spotifyClientIdInput').value.trim();
+            if (!cid) {
+                showToast('Spotify Client ID를 먼저 입력해주세요');
+                return;
+            }
+            initiateSpotifyPKCE(cid);
+        });
+
+        document.getElementById('applyDirectTokenBtn').addEventListener('click', async () => {
+            const tok = document.getElementById('spotifyDirectTokenInput').value.trim();
+            if (!tok) return;
+            state.spotifyToken = tok;
+            localStorage.setItem('spotify_access_token', tok);
+            spotifyModal.classList.add('hidden');
+            await syncSpotifyData();
+        });
+
+        document.getElementById('disconnectSpotifyBtn').addEventListener('click', () => {
+            state.spotifyToken = '';
+            state.spotifyUser = null;
+            localStorage.removeItem('spotify_access_token');
+            updateSpotifyStatusUI();
+            showToast('Spotify 연동이 해제되었습니다');
+        });
+
+        document.getElementById('syncSpotifyRecentBtn').addEventListener('click', async () => {
+            if (!state.spotifyToken) {
+                spotifyModal.classList.remove('hidden');
+                return;
+            }
+            await syncSpotifyData();
+            renderRecentAddedList();
+        });
+
+        // Search Modal (Searches local shelf + live Spotify API when connected)
+        const searchModal = document.getElementById('searchModal');
+        const globalSearchInput = document.getElementById('globalSearchInput');
+        document.getElementById('openSearchModalBtn').addEventListener('click', () => {
+            searchModal.classList.remove('hidden');
+            setTimeout(() => globalSearchInput.focus(), 60);
+        });
+        document.getElementById('closeSearchModalBtn').addEventListener('click', () => searchModal.classList.add('hidden'));
+
+        let searchTimer = null;
+        globalSearchInput.addEventListener('input', e => {
+            clearTimeout(searchTimer);
+            const q = e.target.value.trim();
+            searchTimer = setTimeout(() => performSearch(q), 280);
+        });
+
+        async function performSearch(query) {
+            const container = document.getElementById('searchResultsContainer');
+            if (!query) {
+                container.innerHTML = `<p class="text-xs text-neutral-500 text-center py-8">검색어를 입력하면 내 3D 책장과 Spotify에서 검색합니다.</p>`;
+                return;
+            }
+
+            const lower = query.toLowerCase();
+            const localMatches = [];
+            state.albums.forEach(alb => {
+                alb.tracks.forEach(t => {
+                    if (t.title.toLowerCase().includes(lower) || t.artist.toLowerCase().includes(lower) || alb.title.toLowerCase().includes(lower)) {
+                        localMatches.push({ ...t, albumId: alb.id, albumTitle: alb.title, coverUrl: t.coverUrl || alb.coverUrl });
+                    }
+                });
+            });
+
+            let spotifyTracks = [];
+            if (state.spotifyToken) {
+                const res = await spotifyFetch(`/search?q=${encodeURIComponent(query)}&type=track&limit=8`);
+                if (res && res.tracks && Array.isArray(res.tracks.items)) {
+                    spotifyTracks = res.tracks.items.map(t => ({
+                        id: `sp-${t.id}`,
+                        spotifyId: t.id,
+                        spotifyUri: t.uri,
+                        externalUrl: t.external_urls?.spotify,
+                        title: t.name,
+                        artist: t.artists.map(a => a.name).join(', '),
+                        albumTitle: t.album?.name || 'Spotify',
+                        coverUrl: t.album?.images?.[0]?.url || DEFAULT_SHELF_ALBUMS[3].coverUrl,
+                        duration: Math.round((t.duration_ms || 180000) / 1000),
+                        audioUrl: t.preview_url || null,
+                        isSpotify: true,
+                        isUserAdded: true
+                    }));
+                }
+            }
+
+            container.innerHTML = '';
+            const combined = [...localMatches, ...spotifyTracks];
+            if (combined.length === 0) {
+                container.innerHTML = `<p class="text-xs text-neutral-500 text-center py-8">검색 결과가 없습니다.</p>`;
+                return;
+            }
+
+            combined.forEach(tr => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between gap-3 p-2.5 rounded-2xl hover:bg-neutral-100 cursor-pointer transition-colors';
+                row.innerHTML = `
+                    <div class="flex items-center gap-3 min-w-0">
+                        <img src="${tr.coverUrl}" alt="" class="w-10 h-10 rounded-xl object-cover shrink-0" />
+                        <div class="min-w-0">
+                            <p class="text-xs font-bold text-neutral-900 truncate">${tr.title}</p>
+                            <p class="text-[11px] text-neutral-500 truncate">
+                                ${tr.artist} ${tr.isSpotify ? '· <span class="text-[#1DB954] font-semibold">Spotify</span>' : `· ${tr.albumTitle}`}
+                            </p>
+                        </div>
+                    </div>
+                    <span class="px-3 py-1 rounded-full bg-neutral-900 text-white text-[11px] font-semibold shrink-0">재생</span>
+                `;
+
+                row.addEventListener('click', () => {
+                    // Add searched Spotify track into user shelf so it can be pulled out in 3D
+                    const userShelf = state.albums.find(a => a.id === 'alb-user-shelf') || state.albums[0];
+                    if (!findTrackById(tr.id)) {
+                        userShelf.tracks.unshift(tr);
+                        userShelf.coverUrl = tr.coverUrl;
+                    }
+                    state.currentAlbumId = tr.albumId || userShelf.id;
+                    state.currentTrackId = tr.id;
+                    state.currentTime = 0;
+                    searchModal.classList.add('hidden');
+                    playTrack(tr);
+                    pullOutAlbumFromShelf(state.currentAlbumId);
+                });
+
+                container.appendChild(row);
+            });
+        }
+
+        // Add Local Music Modal
+        const addModal = document.getElementById('addTrackModal');
+        const audioFileInput = document.getElementById('audioFileInput');
+        const coverFileInput = document.getElementById('coverFileInput');
+        let uploadedCoverUrl = null;
+
+        function openAddModal(defaultAlbId) {
+            const sel = document.getElementById('targetAlbumSelect');
+            sel.innerHTML = state.albums.map(a => `<option value="${a.id}" ${a.id === defaultAlbId ? 'selected' : ''}>${a.title}</option>`).join('');
+            addModal.classList.remove('hidden');
+        }
+
+        document.getElementById('openAddModalBtn').addEventListener('click', () => openAddModal('alb-user-shelf'));
+        document.getElementById('uploadFromListBtn').addEventListener('click', () => openAddModal('alb-user-shelf'));
+        document.getElementById('addToAlbumBtn').addEventListener('click', () => openAddModal(state.currentAlbumId));
+        document.getElementById('closeAddModalBtn').addEventListener('click', () => addModal.classList.add('hidden'));
+        document.getElementById('cancelAddModalBtn').addEventListener('click', () => addModal.classList.add('hidden'));
+
+        audioFileInput.addEventListener('change', e => {
+            const files = e.target.files;
+            if (!files || !files.length) return;
+            document.getElementById('audioFileLabel').textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
+            if (files.length === 1 && !document.getElementById('newTrackTitle').value) {
+                document.getElementById('newTrackTitle').value = files[0].name.replace(/\.[^/.]+$/, '');
+            }
+        });
+
+        coverFileInput.addEventListener('change', e => {
+            const f = e.target.files && e.target.files[0];
+            if (!f) return;
+            document.getElementById('coverFileLabel').textContent = f.name;
+            const reader = new FileReader();
+            reader.onload = ev => { uploadedCoverUrl = ev.target.result; };
+            reader.readAsDataURL(f);
+        });
+
+        document.getElementById('addTrackForm').addEventListener('submit', e => {
+            e.preventDefault();
+            const targetId = document.getElementById('targetAlbumSelect').value;
+            const alb = state.albums.find(a => a.id === targetId) || state.albums[0];
+            const title = document.getElementById('newTrackTitle').value.trim();
+            const artist = document.getElementById('newTrackArtist').value.trim() || '나만의 아티스트';
+            const files = audioFileInput.files;
+
+            if (uploadedCoverUrl) alb.coverUrl = uploadedCoverUrl;
+
+            if (files && files.length > 0) {
+                Array.from(files).forEach((file, i) => {
+                    alb.tracks.unshift({
+                        id: `loc-${Date.now()}-${i}`,
+                        title: (files.length === 1 && title) ? title : file.name.replace(/\.[^/.]+$/, ''),
+                        artist,
+                        duration: 180,
+                        audioUrl: URL.createObjectURL(file),
+                        coverUrl: uploadedCoverUrl || alb.coverUrl,
+                        isUserAdded: true
+                    });
+                });
+            } else {
+                alb.tracks.unshift({
+                    id: `loc-${Date.now()}`,
+                    title: title || `커스텀 트랙 #${alb.tracks.length + 1}`,
+                    artist,
+                    duration: 170,
+                    chord: [261.63, 329.63, 392.00, 493.88],
+                    coverUrl: uploadedCoverUrl || alb.coverUrl,
+                    isUserAdded: true
+                });
+            }
+
+            const newest = alb.tracks[0];
+            state.currentAlbumId = alb.id;
+            state.currentTrackId = newest.id;
+            state.currentTime = 0;
+            playTrack(newest);
+
+            renderShelfAlbums();
+            updateBadges();
+            if (state.pulledOutAlbumId === alb.id) renderPulledOutView(alb);
+            addModal.classList.add('hidden');
+            document.getElementById('addTrackForm').reset();
+            uploadedCoverUrl = null;
+            showToast(`'${alb.title}' 앨범에 곡이 추가되었습니다`);
+        });
+
+        // Editable App Name
+        const appTitleInput = document.getElementById('appTitleInput');
+        appTitleInput.value = state.appName;
+        appTitleInput.addEventListener('input', e => {
+            state.appName = e.target.value;
+            localStorage.setItem('apple_shelf_app_name', state.appName);
+        });
+        appTitleInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter') appTitleInput.blur();
+        });
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', e => {
+            if (document.activeElement === appTitleInput || document.activeElement === globalSearchInput) return;
+            if (e.key === 'Escape' && state.pulledOutAlbumId) putAlbumBackInShelf();
+            if (e.key === 'ArrowLeft' && !state.pulledOutAlbumId) {
+                state.activeIndex = Math.max(0, state.activeIndex - 1);
+                updateShelfTransforms();
+            }
+            if (e.key === 'ArrowRight' && !state.pulledOutAlbumId) {
+                const vis = getVisibleShelfAlbums();
+                state.activeIndex = Math.min(vis.length - 1, state.activeIndex + 1);
+                updateShelfTransforms();
+            }
+        });
+
+        function showToast(msg) {
+            const t = document.getElementById('toastMsg');
+            t.textContent = msg;
+            t.classList.remove('opacity-0', '-translate-y-2');
+            t.classList.add('opacity-100', 'translate-y-0');
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => {
+                t.classList.remove('opacity-100', 'translate-y-0');
+                t.classList.add('opacity-0', '-translate-y-2');
+            }, 2500);
+        }
+
+        /**
+         * ============================================================================
+         * 10. BOOTSTRAP
+         * ============================================================================
+         */
+        window.addEventListener('DOMContentLoaded', async () => {
+            renderShelfAlbums();
+            updateBadges();
+            updatePlayerUI();
+            updateSpotifyStatusUI();
+
+            // Check if returning from Spotify OAuth redirect
+            await handleSpotifyOAuthCallback();
+            if (state.spotifyToken && !state.spotifyUser) {
+                await syncSpotifyData();
+            }
+        });
+    </script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+      console.warn("Service worker registration failed:", error);
+    });
+  });
+}
+</script>
+
+</body>
+</html>
